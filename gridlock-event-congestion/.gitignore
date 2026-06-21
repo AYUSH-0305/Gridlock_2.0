@@ -3,14 +3,17 @@ venv/
 env/
 .env
 
-# Data & Models
+# Data & Models (large generated files — stored on HuggingFace Hub)
 backend/models/*.pkl
 backend/models/*.bin
 backend/models/*.h5
 *.csv
 *.parquet
-*.json
 *.graphml
+
+# JSON data files (but not config files like vercel.json, package.json)
+cache/*.json
+backend/feedback_log.json
 
 # Python Caches
 __pycache__/
