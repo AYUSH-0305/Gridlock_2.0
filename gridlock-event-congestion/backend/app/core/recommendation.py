@@ -47,8 +47,7 @@ class RecommendationEngine:
             score += 1
         return min(5, score)
 
-    def calculate_manpower(self, expected_footfall: int, criticality_score: int) -> ManpowerRecommendation:
-        base = 1
+    def calculate_manpower(self, expected_footfall: int, criticality_score: int, avg_degradation: float = 0.0) -> ManpowerRecommendation:
         if expected_footfall >= self.HIGH_FOOTFALL:
             base = 4
         elif expected_footfall >= self.MEDIUM_FOOTFALL:
@@ -59,10 +58,17 @@ class RecommendationEngine:
         if criticality_score >= 4:
             base += 1
 
-        signal_override = criticality_score >= 4
+        # Scale officers up based on predicted congestion severity
+        if avg_degradation >= 0.5:
+            base += 2
+        elif avg_degradation >= 0.35:
+            base += 1
+
+        signal_override = criticality_score >= 4 or avg_degradation >= 0.45
         rationale = (
-            f"Footfall {expected_footfall} mapped to {base} officers; "
-            f"criticality score {criticality_score} triggers {'signal override' if signal_override else 'standard deployment'}."
+            f"Footfall {expected_footfall} → base {base} officers; "
+            f"avg degradation {avg_degradation:.0%} and criticality {criticality_score} "
+            f"{'trigger' if signal_override else 'do not trigger'} signal override."
         )
         return ManpowerRecommendation(officer_count=base, signal_override=signal_override, rationale=rationale)
 
@@ -102,13 +108,24 @@ class RecommendationEngine:
             highway_type = self._highway_type(edge_data)
             score = self._barricade_priority(highway_type, edge_data)
             road_name = self._road_name(edge_data)
+
+            # Haversine distance from venue center to edge midpoint
+            u_attr = graph.nodes.get(u, {})
+            v_attr = graph.nodes.get(v, {})
+            mid_lat = (float(u_attr.get("y", center_lat)) + float(v_attr.get("y", center_lat))) / 2
+            mid_lon = (float(u_attr.get("x", center_lon)) + float(v_attr.get("x", center_lon))) / 2
+            dlat = np.radians(mid_lat - center_lat)
+            dlon = np.radians(mid_lon - center_lon)
+            a = np.sin(dlat / 2) ** 2 + np.cos(np.radians(center_lat)) * np.cos(np.radians(mid_lat)) * np.sin(dlon / 2) ** 2
+            dist_from_venue = round(2 * 6_371_000 * np.arcsin(np.sqrt(a)), 1)
+
             candidates.append(
                 BarricadeCandidate(
                     segment_id=f"{u}-{v}-{key}",
                     road_name=road_name,
                     highway_type=highway_type,
                     priority_score=score,
-                    distance_m=float(edge_data.get("length", 0.0)),
+                    distance_m=dist_from_venue,
                 )
             )
 

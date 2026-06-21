@@ -88,7 +88,6 @@ def forecast_event(input_data: ForecastInput):
         raise HTTPException(status_code=500, detail="Road network graph is unavailable.")
 
     score = recommendation_engine.road_criticality_score(input_data.corridor, input_data.priority)
-    manpower = recommendation_engine.calculate_manpower(input_data.expected_footfall, score)
 
     try:
         segments = model.predict_segment_impacts(
@@ -100,6 +99,10 @@ def forecast_event(input_data: ForecastInput):
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Forecast model failure: {exc}")
+
+    degradations = [s["predicted_speed_degradation"] for s in segments]
+    avg_degradation = sum(degradations) / len(degradations) if degradations else 0.0
+    manpower = recommendation_engine.calculate_manpower(input_data.expected_footfall, score, avg_degradation)
 
     barricade_candidates = recommendation_engine.generate_barricade_candidates(
         graph=graph,
