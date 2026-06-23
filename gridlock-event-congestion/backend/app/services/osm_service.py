@@ -17,11 +17,20 @@ class OSMGraphService:
     def load_graph(self) -> Optional[nx.MultiDiGraph]:
         if self._graph is not None:
             return self._graph
-        if self.graph_path is None:
-            return None
-        if not Path(self.graph_path).exists():
-            return None
-        self._graph = ox.load_graphml(str(self.graph_path))
+
+        if self.graph_path and Path(self.graph_path).exists():
+            print(f"[OSM] Loading graph from {self.graph_path} ...")
+            self._graph = ox.load_graphml(str(self.graph_path))
+        else:
+            # File not found locally (e.g. first run on Render) — download from OSM.
+            print("[OSM] Graph file not found — downloading Bengaluru road network (~2-3 min) ...")
+            self._graph = ox.graph_from_place("Bengaluru, India", network_type="drive")
+            if self.graph_path:
+                path = Path(self.graph_path)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                ox.save_graphml(self._graph, str(path))
+                print(f"[OSM] Graph cached at {self.graph_path}")
+
         self._build_spatial_index()
         return self._graph
 

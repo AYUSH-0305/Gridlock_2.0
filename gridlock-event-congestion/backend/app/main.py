@@ -1,3 +1,4 @@
+import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,19 +6,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.api import forecast_router, feedback_router
 
 
+def _load_graph_background(osm_service):
+    """Download / load the OSM graph without blocking server startup."""
+    try:
+        graph = osm_service.load_graph()
+        if graph is not None:
+            print(f"[OSM] Graph ready — {len(graph.nodes)} nodes, {len(graph.edges)} edges")
+        else:
+            print("[OSM] WARNING: graph unavailable, /forecast will return 500")
+    except Exception as e:
+        print(f"[OSM] ERROR loading graph: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from backend.app.api.forecast import osm_service, model
     print(f"[Startup] ML model loaded: {model.pipeline is not None}")
-    print("[Startup] Loading OSM graph — server will be ready in ~60s...")
-    try:
-        graph = osm_service.load_graph()
-        if graph is not None:
-            print(f"[Startup] OSM graph ready — {len(graph.nodes)} nodes, {len(graph.edges)} edges")
-        else:
-            print("[Startup] WARNING: OSM graph not found, forecasts will fail")
-    except Exception as e:
-        print(f"[Startup] ERROR loading OSM graph: {e}")
+    print("[Startup] OSM graph loading in background — /forecast ready once graph is loaded ...")
+    threading.Thread(target=_load_graph_background, args=(osm_service,), daemon=True).start()
     yield
 
 
